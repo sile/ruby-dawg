@@ -21,6 +21,18 @@ module Dawg
         @hash = -1
       end
 
+      def children
+        children = Array.new
+        child = @child
+        
+        while child
+          children << child
+          child = child.sibling
+        end
+
+        children.reverse
+      end
+
       def calc_total(node)
         return 0 if node.nil?
         
@@ -57,11 +69,21 @@ module Dawg
       end
     end
 
+    attr_accessor :root
+    
     def initialize(options={})
       @show_progress = options[:show_progress]
       @show_interval = options[:show_interval] || 50000
       
       @root = Node.new(0)
+    end
+
+    def build_from_file(file)
+      keys = Array.new
+      open(file).each do |line|
+        keys << line.strip
+      end
+      build(keys)
     end
 
     def build(keys)
@@ -135,6 +157,75 @@ module Dawg
           node = node.sibling
         end
       end
+    end
+  end
+
+  class DA
+    class Node
+      attr_accessor :index
+      attr_accessor :base
+      attr_accessor :node
+      
+      def initialize(parent_base, node)
+        @base = 0
+        @node = node
+        @index = parent_base + node.label
+      end
+
+      def pack
+        n1 = (@base & 0x7FFFFFFF) | ((@node.is_terminal ? 1 : 0) << 31)
+        n2 = (@node.label & 0xFF) | (@node.sibling_total << 8)
+        [n1,n2].pack("N2")
+      end
+    end
+
+    def initialize
+      @nodes = Array.new
+      @memo = Hash.new
+      @alloca = NodeAllocator.new
+    end
+
+    def build_impl(node)
+      trie = node.node
+      children = trie.children
+      
+      if @memo.key?(trie)
+        node.base = @memo[trie]
+        @nodes[node.index] = node
+      elsif children.size==0
+        @nodes[node.index] = node
+      else
+        base = @alloca.allocate(children.map{|c| c.label})
+        @memo[trie] = base
+        node.base = base
+        @nodes[node.index] = node
+        
+        children.each do |child|
+          build_impl(Node.new(base, child))
+        end
+      end
+    end
+
+    def build (trie, output_file)
+      build_impl(Node.new(0,trie))
+      
+      max_base = 0
+      open(output_file,'wb') do |out|
+        @nodes.each do |node|
+          if node
+            max_base = node.base if max_base < node.base
+            out.write node.pack
+          else
+            out.write [0,0].pack("N2")
+          end
+        end
+
+        (@nodes.size..(max_base+0xFF)).each do |i|
+          out.write [0,0].pack("N2")
+        end
+      end
+      
+      :done
     end
   end
 end
