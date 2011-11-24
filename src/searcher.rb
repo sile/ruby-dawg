@@ -10,7 +10,17 @@ module Dawg
     # key = string or stringio
     def member?(key)
       index = 0
+      flag = true
       key.each_byte do |arc|
+        nc_chck = nobranch_child_chck(index)
+        #puts "#{arc}, #{nc_chck}"
+        if flag && nc_chck != 0
+          flag = false
+          next if nc_chck==arc
+          return false
+        end
+        flag = true
+        
         next_index = base(index) + arc
         return false if chck(next_index) != arc
         index = next_index
@@ -48,20 +58,24 @@ module Dawg
       nil
     end
 
-    def is_terminal(index)
-      (@nodes[index*2] >> 31) != 0
-    end
-
     def base(index)
-      @nodes[index*2] & 0x7FFFFFFF
+      @nodes[index*2] & 0xFFFFFF
     end
 
     def chck(index)
+      @nodes[index*2] >> 24
+    end
+
+    def nobranch_child_chck(index)
       @nodes[index*2+1] & 0xFF
     end
 
+    def is_terminal(index)
+      (@nodes[index*2+1] & 0x100) != 0
+    end
+
     def sibling_total(index)
-      @nodes[index*2+1] >> 8
+      @nodes[index*2+1] >> 9
     end
 
     def id_offset(index)

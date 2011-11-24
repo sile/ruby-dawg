@@ -165,16 +165,18 @@ module Dawg
       attr_accessor :index
       attr_accessor :base
       attr_accessor :node
+      attr_accessor :nobranch_child_label
       
       def initialize(parent_base, node)
         @base = 0
         @node = node
         @index = parent_base + node.label
+        @nobranch_child_label = 0
       end
 
       def pack
-        n1 = (@base & 0x7FFFFFFF) | ((@node.is_terminal ? 1 : 0) << 31)
-        n2 = (@node.label & 0xFF) | (@node.sibling_total << 8)
+        n1 = (@base & 0xFFFFFF) | (@node.label << 24)
+        n2 = (@node.sibling_total << 9) | ((@node.is_terminal ? 1 : 0) << 8) | nobranch_child_label
         [n1,n2].pack("N2")
       end
     end
@@ -189,13 +191,19 @@ module Dawg
       trie = node.node
       children = trie.children
       
+      if @memo.key?(trie) == false && children.size == 1 && children[0].is_terminal == false
+        node.nobranch_child_label = children[0].label
+        trie = children[0]
+        children = trie.children
+      end
+      
       if @memo.key?(trie)
         node.base = @memo[trie]
         @nodes[node.index] = node
       elsif children.size==0
         @nodes[node.index] = node
       else
-        base = @alloca.allocate(children.map{|c| c.label})
+        base = @alloca.allocate(children.map{|c| c.label })
         @memo[trie] = base
         node.base = base
         @nodes[node.index] = node
@@ -230,5 +238,7 @@ module Dawg
   end
 end
 
-#keys = open(ARGV[0]).read.split("\n")
-#Dawg::Builder.new(:show_progress => true).build(keys)
+keys = open(ARGV[0]).read.split("\n")
+dawg = Dawg::Builder.new(:show_progress => true).build(keys)
+Dawg::DA.new.build(dawg.root, "/tmp/dawg.idx")
+:done
